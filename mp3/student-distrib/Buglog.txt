@@ -1,0 +1,160 @@
+CHECKPOINT 1:
+
+Adam Newhouse
+March 13, 2020
+FILES: 	idt.c
+BUG:    Some exceptions lead to a double fault even though they have handlers.
+FIX: 	Realized that some exceptions push an error variable onto the stack. By using a different exception handler for these cases, we can properly pop this error value off the stack before returning.
+
+Seongwoo Kang
+March 16, 2020
+FILES: 	idt.c
+BUG:    "segmentation not present" exception when interrupts are enabled.
+FIX: 	Discovered that segmentation not present occurs when IDT entry with present bit 0 is accessed. By setting IDT entry with handlers' present bit to 1, bug was resolved.
+
+Seongwoo Kang
+March 16, 2020
+FILES: 	i8259.c
+BUG:  	enable_irq, disable_irq, send_eoi do not function as expected, leading to failure of intialization of other devices such as keyboard and rtc.
+FIX: 	Discovered that master_mask and slave_mask were not initialized to be 0xFF. After the initialization of those masks to 0xFF, the bug was resolved.
+
+Seongwoo Kang
+March 19, 2020
+FILES: 	rtc.c
+BUG:  	RTC frequency malfunctioning.
+FIX: 	Discovered that mathematical format for rate calculated based on desired input frequency was incorrect. By creating log2 helper function and applying correct formula, the bug was fixed.
+
+Stephanie Pang
+March 19, 2020
+FILES: 	enable_paging.S
+BUG: 	Dereferencing 0 (NULL) results in a value rather than a page fault.
+FIX: 	Found that PG was not enabled using info mem. PG of CR0 was not enabled because of missing “$” before value 0x80000001. “$” has also been added to the beginning of value 0x00000010 for CR4 to enable 4MB pages.
+
+Stephanie Pang
+March 19, 2020
+FILES: 	paging.c
+BUG: 	Incorrect memory locations allocated in physical memory for page_table address in page_directory array because address does not fit in 20 bits.
+FIX: 	Needed to divide the address by 4kB to account for the alignment of the page directory. All other addresses put into page_addr_31_12 and table_addr_31_12 are accordingly divided by 4kB.
+
+
+
+
+
+Checkpoint 2:
+
+Adam Newhouse
+March 26, 2020
+FILES:	rtc.c
+BUG:	After implementing a virtualized RTC driver (HW RTC set to 1024, then use software count period), it appeared that RTC reads rates were off by a factor of two (e.g. 2Hz rate looked like 1Hz).
+FIX:	My calculation for the rtc_max_count was set to 1024 Hz / (Desired Hz) / 2. It turns out that the extra divide by 2 is unnecessary because the count period already takes this into account.
+
+Seongwoo Kang
+March 27, 2020
+FILES: 	fs_driver.c 
+BUG: 	page fault when using strncpy to copy string from dentry to the input buffer. 
+FIX: 	using gdb, I discovered that dentry input to read_dentry_by_index function had no memory mapped, thus causing page fault. By changing its data type from pointer to regular struct data type and changin paramter input to read_dentry_by_index, the bug was fixed.
+
+Seongwoo Kang
+March 27,2020
+FILES:	fs_driver.c fs_driver.h tests.c
+BUG:	incorrect file size. 
+FIX:	Thanks to TA's help, I discovered that the way that file system pointers were incremented was incorrect (I did not take into account file types when incrementing points). By setting up pointers correctly and accessing them with unified way, the bug was fixed. 
+
+Seongwoo Kang
+March 27,2020
+FILES:	fs_driver.c fs_driver.h tests.c
+BUG:	no magic number within executable file 
+FIX:	There were several problems related to this bug. First, I was missing an edge case in read_data function where I had to break out of the function when the user tries to read more than what's left in the file. Also, I was executing file_read only once when I was supposed to execute until file has reached the end. 
+	By adding edge case, and putting file_read which executes read_data within while(1) loop, the bug was fixed. 
+
+Adam Newhouse
+March 27, 2020
+FILES:	lib.c, keyboard.c
+BUG:	After adding support for the backspace character to be printed in keyboard.c, putc(0x8) did not erase the previous character and in fact inserted a space.
+FIX:	The provided putc function did not support the backspace character. After adding special handling of this character, (decrementing screen_x, printing space over previous character) it works as expected.
+
+Stephanie Pang
+March 28,2020
+FILES:	lib.c
+BUG:	The text entered by the user loops back to the start of the line rather than going to the new line.  
+FIX:	I had only implemented scrolling for the new line, but not for continuously entered text. To fix this, I needed to implement a new conditional for this case, and use code similar to my original new line scrolling code. 
+
+Stephanie Pang
+March 28,2020
+FILES:	keyboard.c
+BUG:	Backspace continues passed the start of typed text.  
+FIX:	To fix this, a count needed to be implemented to stop the backspace key from being passed into putc. The count increases for each entered character, and for each backspace this count is decreased. By keeping track of this value, the backspace will not go beyond the entered text space.
+
+Stephanie Pang
+March 28,2020
+FILES:	lib.c
+BUG:	Clearing the screen then pressing a backspace causes a page fault.  
+FIX:	This bug is caused by lib.c attempting to access memory beyond video memory when the backspace is presssed. To prevent this, a conditional was added to the backspace case, so that if the current location is at the start of video memory (screen_x = 0 and screen_y = 0) it will not execute the code in the backspace conditional. 
+
+
+
+Checkpoint 3:
+
+Seongwoo Kang
+April 12, 2020
+FILES:	sycall.c / fs_driver.c
+BUG:	During exeuction of ls(exe), the program pagefaults after reading particular directory (verylargefilewithverylongname.tx)
+FIX:	This bug was being caused by the fact that the length of this particular file is actually 33 bytes, exceeding maximum filename size, which caused sudden change in fd value and caused pagefault eventually. By limiting bytes read to 32bytes, I could prevent sudden fd change and fix the issue. 
+
+
+Stephanie pang
+April 12, 2020
+FILES:	sycall.c
+BUG:	The program page faults rather than returning to the shell.
+FIX:	This was caused by our pid values not being updated correctly. We needed to put the first update of the pid values before the values are used. We also needed to update the cur_pid and parent_pid variables in halt so that the correct values are being used later.   
+
+Adam Newhouse
+April 12, 2020
+FILES:	syscall_support.S
+BUG:	Syscalls from user programs return improper values causing things to page fault and crash. The syscall wrapper used pushal to save all registers. When popal was called near the end of the assembly linkage, eax is overwritten.
+FIX:	Instead of using pushal/popal, I switched to pushing all register except eax and specifically not touching the contents of eax. This allows the return value from the actual syscall to be saved.
+
+
+
+
+Checkpoint 4:
+
+Seongwoo Kang
+April 17, 2020
+FILES:	sycall.c / fs_driver.c
+BUG:	User program (fish) was causing shell to exit abnormally.
+FIX:	read_data function in file system was skipping a bit after the first block of data, which was causing program image to be shifted by one bit. After simple change (< -> <=), the bug was fixed. (Simple solution but difficult debugging process)
+
+Adam Newhouse
+April 19, 2020
+FILES:	syscall.c
+BUG:	Syserr user program reported that it did not receive -1 when reading from unopened file descriptor. Upon further review, neither read nor write syscalls checked if the file descriptor was actually in use before operatin upon it.
+FIX:	Added new checks in syscall read and write functions to make sure the file descriptor in question is actually in use by the program.
+
+
+
+Checkpoint 5:
+May 3, 2020
+FILES:	lib.c
+BUG:	Processes that print to the screen in the background modify the cursor position of the visible terminal.
+FIX:	Putc function implmentation changed to modify the terminal-specific screen_x and screen_y and only change the visible cursor position if the scheduled terminal is visible.
+
+May 3, 2020
+FILES:	keyboard.c
+BUG:	Switching active terminals leads to a page fault when there is an active process to run on the new terminal. 
+FIX:	I tried severl different ways of switching to the new active process, but had little luck making it not page fault. It seems as though there is an underlying paging issue.
+
+May 3, 2020
+FILES:  pit.c
+BUG:	Starting up the OS would cause a page fault after trying to implement scheduling. 
+FIX:	After commenting out the load for esp and ebp at the bottom of the pit handler, the code would go back to the terminal allowing us to determin that the esp and ebp were incorrect. The saving for the esp and ebp was supposed to be in the pit and not in other files like syscall.c's execute.
+
+May 3, 2020
+FILES:	keyboard.c, pit.c
+BUG:	When trying to run fish or pingpong in any terminal it would have just one line or frame and exit out(fish) or freeze(pingpong). 
+FIX:	We think that it was probably because of something in our paging for video memory and vidmap. We attempted a bunch of different ways for the paging, but we could not get it to work.
+
+May 3, 2020
+FILES:	keyboard.c, pit.c
+BUG:	Trying to exit with halt would go to a page fault after going a few shells forward. 
+FIX:	We think that it was a synchronization problem where the pcbs no longer matched up with the pcbs that the scheduler was trying to use. We needed to somehow make sure that the pcbs matched with the pit handler somehow.
